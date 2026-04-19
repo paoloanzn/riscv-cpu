@@ -1,0 +1,21 @@
+RISC-V CPU
+---
+
+A 64-bit RISC V CPU written in python to teach myself risc architecture.
+
+The goal is to be able to run https://github.com/mit-pdos/xv6-riscv - a minimal Unix-like full OS
+
+NOTE: the project is not finished yet
+
+Resourced I used
+---
+
+- https://book.rvemu.app/hardware-components/01-cpu.html
+- https://www.eecs.yorku.ca/course_archive/2019-20/F/2021S/REF/RISCV-GreenCard.pdf
+
+
+Implemented Instructions
+---
+
+- addi, addiw I ADD Immediate (Word) R[rd] = R[rs1] + imm
+- add, addw R ADD (Word) R[rd] = R[rs1] + R[rs2]
