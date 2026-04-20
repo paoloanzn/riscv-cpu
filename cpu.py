@@ -72,8 +72,11 @@ class Memory:
             self._data = [0] * self.size
         self._data = preloaded_bytes + ([0] * (self.size - len(preloaded_bytes)))
     
-    def read_bytes(self, idx, n) -> int:
-        return self._data[idx:idx+n]
+    def load(self, addr, size) -> int:
+        return self._data[addr:addr+size]
+
+    def store(self, addr, size, bytes_array) -> int:
+        self._data[addr:addr+len(bytes_array)]= bytes_array
 
 
 class CPU:
@@ -93,7 +96,7 @@ class CPU:
         self.instruction_count = 0
 
     def __str__(self) -> str:
-        return (str(self.registers) + "\n" + f"pc: {self.pc}" + "\n" + f"sp: {self.registers[2]}")
+        return (str([f"0x{x:02x}" for x in self.registers]) + "\n" + f"pc: {self.pc}" + "\n" + f"sp: {self.registers[2]}")
 
     def get_state(self) -> str:
         return self.__str__()
@@ -101,7 +104,7 @@ class CPU:
     # fetch instruction from memory
     def _fetch(self) -> int:
         # instructions are 4 bytes long
-        return self.memory.read_bytes(self.pc, 4)
+        return self.memory.load(self.pc, 4)
 
     def _decode(self, mem_bytes) -> DecodedInstr:
         format_references = {
