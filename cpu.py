@@ -143,11 +143,11 @@ class CPU:
             d.imm    = sign_extend(extract_bits(raw, 31, 20), 12)
 
         if d.instruction_format == "R":
-            d.rd     = extract_bits(raw, 11, 7)
-            d.funct3 = extract_bits(raw, 14, 12)
-            d.rs1    = extract_bits(raw, 19, 15)
-            d.rs2    = extract_bits(raw, 24, 20)
-            d.funct7 = extract_bits(raw, 31, 25)
+            d.rd     = mem_layout_chunks["rd"](raw)
+            d.funct3 = mem_layout_chunks["funct3"](raw)
+            d.rs1    = mem_layout_chunks["rs1"](raw)
+            d.rs2    = mem_layout_chunks["rs2"](raw)
+            d.funct7 = mem_layout_chunks["funct7"](raw)
             # no immediate
 
         return d
