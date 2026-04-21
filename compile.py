@@ -13,7 +13,7 @@ def compile_asm_to_bytes(file_path=str) -> bytes:
         )
 
         subprocess.run(
-            args=f'llvm-objcopy -O binary -j .text {out_path} {out_path.replace(".o", ".bin")}'.split(),
+            args=f'/opt/homebrew/opt/llvm/bin/llvm-objcopy -O binary -j .text {out_path} {out_path.replace(".o", ".bin")}'.split(),
             stderr=None,
             check=True
         )
