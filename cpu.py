@@ -27,6 +27,14 @@ def disasm(d: "DecodedInstr") -> str:
         return f"addi x{d.rd}, x{d.rs1}, {d.imm}"
     elif key == (0x33, 0x00, 0x00):  # add
         return f"add x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x03, 0x00, None):  # lb
+        return f"lb x{d.rd}, {d.imm}(x{d.rs1})"
+    elif key == (0x03, 0x01, None):  # lh
+        return f"lh x{d.rd}, {d.imm}(x{d.rs1})"
+    elif key == (0x03, 0x02, None):  # lw
+        return f"lw x{d.rd}, {d.imm}(x{d.rs1})"
+    elif key == (0x03, 0x03, None):  # ld
+        return f"ld x{d.rd}, {d.imm}(x{d.rs1})"
     else:
         return f"<unknown 0x{d.raw:08x}>"
 
@@ -76,10 +84,10 @@ class Memory:
             self._data = [0] * self.size
         self._data = preloaded_bytes + ([0] * (self.size - len(preloaded_bytes)))
     
-    def load(self, addr, size) -> int:
+    def load(self, addr, size) -> list[int]:
         return self._data[addr:addr+size]
 
-    def store(self, addr, size, bytes_array) -> int:
+    def store(self, addr, size, bytes_array) -> None:
         self._data[addr:addr+len(bytes_array)]= bytes_array
 
 
@@ -171,10 +179,40 @@ class CPU:
         # In RISC-V there is no overflow exception
         # Overflowed values get masked and are still valid addrs
         addr = (self.registers[d.rs1] + d.imm) & XMASK
-        byte = self.memory.load(addr, 1)
+        bytes_data = self.memory.load(addr, 1)
+        value = bytes_data[0]
         value = sign_extend(value, 8) & XMASK
         if d.rd != 0: # x0 guard
             self.registers[d.rd] = value
+
+    # R[rd] = {48'bM[](15),M[R[rs1]+imm](15:0)}
+    def _lh(self, d: DecodedInstr) -> None:
+        addr = (self.registers[d.rs1] + d.imm) & XMASK
+        bytes_data = self.memory.load(addr, 2)
+        value = bytes_data[0] | bytes_data=[1] << 8
+        value = sign_extend(value, 16) & XMASK
+        if d.rd != 0: # x0 guard
+            self.registers[d.rd] = value
+
+    # R[rd] = {32'bM[](31),M[R[rs1]+imm](31:0)}
+    def _lw(self, d: DecodedInstr) -> None:
+        addr = (self.registers[d.rs1] + d.imm) & XMASK
+        bytes_data = self.memory.load(addr, 4)
+        value = bytes_data[0] | bytes_data[1] << 8 | bytes_data[2] << 16 | bytes_data[3] << 24
+        value = sign_extend(value, 32) & XMASK
+        if d.rd != 0: # x0 guard
+            self.registers[d.rd] = value
+
+    # R[rd] = M[R[rs1]+imm](63:0)
+    def _ld(self, d: DecodedInstr) -> None:
+        addr = (self.registers[d.rs1] + d.imm) & XMASK
+        bytes_data = self.memory.load(addr, 8)
+        value = bytes_data[0] | bytes_data[1] << 8 | bytes_data[2] << 16 | bytes_data[3] << 24 | bytes_data[4] << 32 | bytes_data[5] << 40 | bytes_data[6] << 48 | bytes_data[7] << 56
+        value = value & XMASK
+        if d.rd != 0: # x0 guard
+            self.registers[d.rd] = value
+
+      
 
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
@@ -182,9 +220,9 @@ class CPU:
             (0x13, 0x00, None): self._addi,
             (0x33, 0x00, 0x00): self._add,
             (0x03, 0x00, None): self._lb,
-            # (0x03, 0x01, None): self._lh,
-            # (0x03, 0x02, None): self._lw,
-            # (0x03, 0x03, None): self._ld,
+            (0x03, 0x01, None): self._lh,
+            (0x03, 0x02, None): self._lw,
+            (0x03, 0x03, None): self._ld,
             # (0x03, 0x04, None): self._lbu,
             # (0x03, 0x05, None): self._lhu,
             # (0x03, 0x06, None): self._lwu
