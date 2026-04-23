@@ -17,5 +17,16 @@ Resourced I used
 Implemented Instructions
 ---
 
-- addi, addiw I ADD Immediate (Word) R[rd] = R[rs1] + imm
-- add, addw R ADD (Word) R[rd] = R[rs1] + R[rs2]
+- addi
+- add
+- lb
+- lh
+- lw
+- ld
+- lbu
+- lhu
+- lwu
+- sb
+- sh
+- sw
+- sd
