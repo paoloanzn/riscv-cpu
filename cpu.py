@@ -2,6 +2,7 @@
 import sys, signal, os, logging
 from dataclasses import dataclass
 from typing import Optional, Tuple
+from memory import Memory, MEM_SIZE
 
 log_level_str = os.environ.get("LOG", "WARNING").upper()
 log_level = getattr(logging, log_level_str, logging.WARNING)
@@ -80,21 +81,6 @@ class DecodedInstr:
 REGISTERS_COUNT = 32
 REGISTERS_BIT_SIZE = 64
 XMASK = (1 << 64) - 1 # 64 bit mask
-MEM_SIZE = 1024 * 1024 * 128 # 128 Mib
-
-
-class Memory:
-    def __init__(self, preloaded_bytes=None):
-        self.size = MEM_SIZE
-        if not preloaded_bytes:
-            self._data = [0] * self.size
-        self._data = preloaded_bytes + ([0] * (self.size - len(preloaded_bytes)))
-    
-    def load(self, addr, size) -> list[int]:
-        return self._data[addr:addr+size]
-
-    def store(self, addr, size, bytes_array) -> None:
-        self._data[addr:addr+len(bytes_array)]= bytes_array
 
 
 class CPU:
