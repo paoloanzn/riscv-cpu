@@ -30,3 +30,9 @@ Implemented Instructions
 - sh
 - sw
 - sd
+- csrrw
+- csrrs
+- csrrc
+- csrrwi
+- csrrsi
+- csrrci
