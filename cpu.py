@@ -21,9 +21,31 @@ class IllegalInstruction(Exception):
         msg = f"IllegalInstruction at pc=0x{pc:08x}: raw=0x{raw:08x} ({reason})"
         super().__init__(msg)
 
+def csr_name(addr: int) -> str:
+    """Return a human-readable name for common CSR addresses, or a hex string."""
+    names = {
+        0x000: "ustatus",  0x001: "fflags",   0x002: "frm",
+        0x003: "fcsr",     0x004: "uie",      0x005: "utvec",
+        0x100: "sstatus",  0x102: "sedeleg",  0x103: "sideleg",
+        0x104: "sie",      0x105: "stvec",    0x140: "sscratch",
+        0x141: "sepc",     0x142: "scause",   0x143: "stval",
+        0x144: "sip",      0x300: "mstatus",  0x301: "misa",
+        0x302: "medeleg",  0x303: "mideleg",  0x304: "mie",
+        0x305: "mtvec",    0x330: "mepc",     0x340: "mscratch",
+        0x341: "mcause",   0x342: "mtval",    0x343: "mip",
+        0xB00: "mcycle",   0xB02: "minstret",
+        0xF11: "mvendorid", 0xF12: "marchid", 0xF13: "mimpid",
+        0xF14: "mhartid",  0x7C0: "tselect",  0x7C1: "tdata1",
+        0x7C2: "tdata2",   0x7C3: "tdata3",
+    }
+    return names.get(addr, f"0x{addr:03x}")
+
+
 def disasm(d: "DecodedInstr") -> str:
     key = (d.opcode, d.funct3, d.funct7)
-    
+    csr_addr = (d.imm & 0xFFF) if d.imm is not None else 0
+    uimm = d.rs1
+
     if key == (0x13, 0x00, None):  # addi
         return f"addi x{d.rd}, x{d.rs1}, {d.imm}"
     elif key == (0x33, 0x00, 0x00):  # add
@@ -50,11 +72,23 @@ def disasm(d: "DecodedInstr") -> str:
         return f"sw x{d.rs2}, {d.imm}(x{d.rs1})"
     elif key == (0x23, 0x03, None):  # sd
         return f"sd x{d.rs2}, {d.imm}(x{d.rs1})"
+
+    # CSR instructions (opcode 0x73)
+    elif key == (0x73, 0x1, None):     # csrrw
+        return f"csrrw x{d.rd}, {csr_name(csr_addr)}, x{d.rs1}"
+    elif key == (0x73, 0x2, None):     # csrrs
+        return f"csrrs x{d.rd}, {csr_name(csr_addr)}, x{d.rs1}"
+    elif key == (0x73, 0x3, None):     # csrrc
+        return f"csrrc x{d.rd}, {csr_name(csr_addr)}, x{d.rs1}"
+    elif key == (0x73, 0x5, None):     # csrrwi
+        return f"csrrwi x{d.rd}, {csr_name(csr_addr)}, {uimm}"
+    elif key == (0x73, 0x6, None):     # csrrsi
+        return f"csrrsi x{d.rd}, {csr_name(csr_addr)}, {uimm}"
+    elif key == (0x73, 0x7, None):     # csrrci
+        return f"csrrci x{d.rd}, {csr_name(csr_addr)}, {uimm}"
     else:
         return f"<unknown 0x{d.raw:08x}>"
 
-
-# Takes a bits-wide unsigned value and return its signed interpretation
 def sign_extend(value, bits) -> int:
     sign_bit = 1 << (bits - 1)
     return (value & (sign_bit -1)) - (value & sign_bit)
@@ -111,7 +145,18 @@ class CPU:
         self.instruction_count = 0
 
     def __str__(self) -> str:
-        return (str([f"0x{x:02x}" for x in self.registers]) + "\n" + f"pc: {self.pc}" + "\n" + f"sp: {self.registers[2]}")
+        lines = [str([f"0x{x:02x}" for x in self.registers])]
+        lines.append(f"pc: {self.pc}")
+        lines.append(f"sp: {self.registers[2]}")
+
+        # Dump non-zero CSRs
+        written_csrs = [(addr, val) for addr, val in enumerate(self.csrs) if val != 0]
+        if written_csrs:
+            lines.append("CSRs:")
+            for addr, val in written_csrs:
+                lines.append(f"  {csr_name(addr)} (0x{addr:03x}) = 0x{val:x}")
+
+        return "\n".join(lines)
 
     def get_state(self) -> str:
         return self.__str__()
@@ -125,6 +170,7 @@ class CPU:
         format_references = {
             0b0010011: "I",
             0b0000011: "I",
+            0b1110011: "I",
             0b0110011: "R",
             0b0100011: "S",
         }
@@ -292,6 +338,48 @@ class CPU:
         ]
         self.memory.store(addr, 8, bytes_array)
 
+    # R[rd] = CSR; CSR = R[rs1]
+    def _csrrw(self, d: DecodedInstr) -> None:
+        value_old = self.csrs[d.imm]
+        self.csrs[d.imm] = self.registers[d.rs1]
+        if d.rd != 0:
+            self.registers[d.rd] = value_old
+
+    # R[rd] = CSR; CSR = CSR | R[rs1] 
+    def _csrrs(self, d: DecodedInstr) -> None:
+        value_old = self.csrs[d.imm]
+        self.csrs[d.imm] = self.csrs[d.imm] | self.registers[d.rs1]
+        if d.rd != 0:
+            self.registers[d.rd] = value_old
+
+    # R[rd] = CSR;CSR = CSR & ~R[rs1]
+    def _csrrc(self, d: DecodedInstr) -> None:
+        value_old = self.csrs[d.imm]
+        self.csrs[d.imm] = (self.csrs[d.imm] & ~self.registers[d.rs1]) & XMASK
+        if d.rd != 0:
+            self.registers[d.rd] = value_old
+
+    # R[rd] = CSR; CSR = imm
+    def _csrrwi(self, d: DecodedInstr) -> None:
+        value_old = self.csrs[d.imm]
+        self.csrs[d.imm] = d.rs1 
+        if d.rd != 0:
+            self.registers[d.rd] = value_old
+
+    # R[rd] = CSR; CSR = CRS | imm
+    def _csrrsi(self, d: DecodedInstr) -> None:
+        value_old = self.csrs[d.imm]
+        self.csrs[d.imm] = self.csrs[d.imm] | d.rs1 
+        if d.rd != 0:
+            self.registers[d.rd] = value_old
+
+    # R[rd] = CSR;CSR = CSR & ~R[rs1]
+    def _csrrci(self, d: DecodedInstr) -> None:
+        value_old = self.csrs[d.imm]
+        self.csrs[d.imm] = (self.csrs[d.imm] & ~d.rs1) & XMASK
+        if d.rd != 0:
+            self.registers[d.rd] = value_old
+
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
         mnemonic_lookup = {
@@ -308,6 +396,14 @@ class CPU:
             (0x23, 0x01, None): self._sh,
             (0x23, 0x02, None): self._sw,
             (0x23, 0x03, None): self._sd,
+
+            # control status registers instructions
+            (0x73, 0x01, None): self._csrrw,
+            (0x73, 0x02, None): self._csrrs,
+            (0x73, 0x03, None): self._csrrc,
+            (0x73, 0x05, None): self._csrrwi,
+            (0x73, 0x06, None): self._csrrsi,
+            (0x73, 0x07, None): self._csrrci,
         }
 
         key = (d.opcode, d.funct3, d.funct7)
