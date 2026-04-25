@@ -72,6 +72,8 @@ def disasm(d: "DecodedInstr") -> str:
         return f"sw x{d.rs2}, {d.imm}(x{d.rs1})"
     elif key == (0x23, 0x03, None):  # sd
         return f"sd x{d.rs2}, {d.imm}(x{d.rs1})"
+    elif key == (0x37, None, None):  # lui
+        return f"lui x{d.rd}, {d.imm}"
 
     # CSR instructions (opcode 0x73)
     elif key == (0x73, 0x1, None):     # csrrw
@@ -173,6 +175,7 @@ class CPU:
             0b1110011: "I",
             0b0110011: "R",
             0b0100011: "S",
+            0b0110111: "U",
         }
 
         def extract_bits(value: int, hi: int, lo: int) -> int:
@@ -219,6 +222,11 @@ class CPU:
             imm_lo      = extract_bits(raw, 11, 7)
             imm_hi      = extract_bits(raw, 31, 25)
             d.imm       = sign_extend((imm_hi << 5) | imm_lo, 12)
+
+        if d.instruction_format == "U":
+            d.rd     = mem_layout_chunks["rd"](raw)
+            d.imm    = extract_bits(raw, 31, 12)
+            # no immediate
 
         return d
 
@@ -380,6 +388,14 @@ class CPU:
         if d.rd != 0:
             self.registers[d.rd] = value_old
 
+    # R[rd] = {32b'imm<31>, imm, 12'b0}
+    def _lui(self, d: decodedinstr) -> none:
+        value = d.imm << 12
+        value = sign_extend(value, 32) & XMASK
+        if d.rd != 0:
+            self.registers[d.rd] = value
+
+
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
         mnemonic_lookup = {
@@ -396,6 +412,7 @@ class CPU:
             (0x23, 0x01, None): self._sh,
             (0x23, 0x02, None): self._sw,
             (0x23, 0x03, None): self._sd,
+            (0x37, None, None): self._lui,
 
             # control status registers instructions
             (0x73, 0x01, None): self._csrrw,

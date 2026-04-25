@@ -30,6 +30,7 @@ Implemented Instructions
 - sh
 - sw
 - sd
+- lui
 - csrrw
 - csrrs
 - csrrc
