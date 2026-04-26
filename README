@@ -38,3 +38,10 @@ Implemented Instructions
 - csrrwi
 - csrrsi
 - csrrci
+- jal
+
+Tests
+---
+
+Assembly tests live in `test/`. Run them with `python3 test.py`.
+Each `.s` file can include `# expect xN=VALUE` comments to assert register values after execution.
