@@ -78,6 +78,8 @@ def disasm(d: "DecodedInstr") -> str:
         return f"auipc x{d.rd}, {d.imm}"
     elif key == (0x6f, None, None):  # jal
         return f"jal x{d.rd}, {d.imm}"
+    elif key == (0x67, 0x00, None):  # jalr
+        return f"jalr x{d.rd}, {d.imm}(x{d.rs1})"
 
     # CSR instructions (opcode 0x73)
     elif key == (0x73, 0x1, None):     # csrrw
@@ -178,6 +180,7 @@ class CPU:
             0b0010011: "I",
             0b0000011: "I",
             0b1110011: "I",
+            0b1100111: "I",
             0b0110011: "R",
             0b0100011: "S",
             0b0110111: "U",
@@ -426,6 +429,12 @@ class CPU:
         self.pc = (self.pc + d.imm) & XMASK
         self.pc_modified = True
         
+    # R[rd] = PC+4; PC = R[rs1]+imm
+    def _jarl(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = self.pc + 4
+        self.pc = (self.registers[d.rs1] + d.imm) & XMASK
+        self.pc_modified = True
 
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
@@ -446,6 +455,7 @@ class CPU:
             (0x37, None, None): self._lui,
             (0x17, None, None): self._auipc,
             (0x6f, None, None): self._jal,
+            (0x67, 0x00, None): self._jarl,
 
             # control status registers instructions
             (0x73, 0x01, None): self._csrrw,

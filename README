@@ -39,6 +39,7 @@ Implemented Instructions
 - csrrsi
 - csrrci
 - jal
+- jalr
 
 Tests
 ---
