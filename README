@@ -40,6 +40,12 @@ Implemented Instructions
 - csrrci
 - jal
 - jalr
+- beq
+- bne
+- blt
+- bge
+- bltu
+- bgeu
 
 Tests
 ---

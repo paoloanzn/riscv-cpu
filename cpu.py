@@ -81,6 +81,20 @@ def disasm(d: "DecodedInstr") -> str:
     elif key == (0x67, 0x00, None):  # jalr
         return f"jalr x{d.rd}, {d.imm}(x{d.rs1})"
 
+    # Branch instructions (opcode 0x63)
+    elif key == (0x63, 0x0, None):  # beq
+        return f"beq x{d.rs1}, x{d.rs2}, {d.imm}"
+    elif key == (0x63, 0x1, None):  # bne
+        return f"bne x{d.rs1}, x{d.rs2}, {d.imm}"
+    elif key == (0x63, 0x4, None):  # blt
+        return f"blt x{d.rs1}, x{d.rs2}, {d.imm}"
+    elif key == (0x63, 0x5, None):  # bge
+        return f"bge x{d.rs1}, x{d.rs2}, {d.imm}"
+    elif key == (0x63, 0x6, None):  # bltu
+        return f"bltu x{d.rs1}, x{d.rs2}, {d.imm}"
+    elif key == (0x63, 0x7, None):  # bgeu
+        return f"bgeu x{d.rs1}, x{d.rs2}, {d.imm}"
+
     # CSR instructions (opcode 0x73)
     elif key == (0x73, 0x1, None):     # csrrw
         return f"csrrw x{d.rd}, {csr_name(csr_addr)}, x{d.rs1}"
@@ -186,6 +200,7 @@ class CPU:
             0b0110111: "U",
             0b0010111: "U",
             0b1101111: "UJ",
+            0b1100011: "SB", 
         }
 
         def extract_bits(value: int, hi: int, lo: int) -> int:
@@ -244,8 +259,21 @@ class CPU:
             imm_11      = extract_bits(raw, 20, 20) # 1 bit
             imm_19_12   = extract_bits(raw, 19, 12) # 8 bits
 
-            imm       = (imm_20 << 20) | (imm_19_12 << 12) | (imm_11 << 11) | (imm_10_1 << 1)
-            d.imm     = sign_extend(imm, 21)
+            imm         = (imm_20 << 20) | (imm_19_12 << 12) | (imm_11 << 11) | (imm_10_1 << 1)
+            d.imm       = sign_extend(imm, 21)
+
+        if d.instruction_format == "SB":
+            d.rd        = mem_layout_chunks["rd"](raw)
+            d.funct3    = mem_layout_chunks["funct3"](raw)
+            d.rs1       = mem_layout_chunks["rs1"](raw)
+            d.rs2       = mem_layout_chunks["rs2"](raw)
+            imm_12      = extract_bits(raw, 31, 31) # 1 bit
+            imm_10_5    = extract_bits(raw, 30, 25) # 6 bits
+            imm_4_1     = extract_bits(raw, 11, 8)  # 4 bits
+            imm_11      = extract_bits(raw, 7, 7) # 1 bit
+
+            imm         = (imm_12 << 12) | (imm_11 << 11) | (imm_10_5 << 5) | (imm_4_1 << 1)
+            d.imm       = sign_extend(imm, 13)
 
         return d
 
@@ -436,6 +464,42 @@ class CPU:
         self.pc = (self.registers[d.rs1] + d.imm) & XMASK
         self.pc_modified = True
 
+    # if(R[rs1]=R[rs2) PC=PC+{imm, 1b'0}
+    def _beq(self, d: DecodedInstr) -> None:
+        if self.registers[d.rs1] == self.registers[d.rs2]:
+            self.pc = (self.pc + d.imm) & XMASK
+            self.pc_modified = True
+
+    # if(R[rs1] != R[rs2) PC=PC+{imm, 1b'0}
+    def _bne(self, d: DecodedInstr) -> None:
+        if self.registers[d.rs1] != self.registers[d.rs2]:
+            self.pc = (self.pc + d.imm) & XMASK
+            self.pc_modified = True
+
+    # if(R[rs1]<R[rs2) PC=PC+{imm,1b'0}
+    def _blt(self, d: DecodedInstr) -> None:
+        if sign_extend(self.registers[d.rs1], 64) < sign_extend(self.registers[d.rs2], 64):
+            self.pc = (self.pc + d.imm) & XMASK
+            self.pc_modified = True
+
+    # if(R[rs1]>=R[rs2) PC=PC+{imm,1b'0}
+    def _bge(self, d: DecodedInstr) -> None:
+        if sign_extend(self.registers[d.rs1], 64) >= sign_extend(self.registers[d.rs2], 64):
+            self.pc = (self.pc + d.imm) & XMASK
+            self.pc_modified = True
+
+    # if(R[rs1]<R[rs2) PC=PC+{imm,1b'0}  (unsigned comparison)
+    def _bltu(self, d: DecodedInstr) -> None:
+        if (self.registers[d.rs1] & XMASK) < (self.registers[d.rs2] & XMASK):
+            self.pc = (self.pc + d.imm) & XMASK
+            self.pc_modified = True
+
+    # if(R[rs1]>=R[rs2) PC=PC+{imm,1b'0}  (unsigned comparison)
+    def _bgeu(self, d: DecodedInstr) -> None:
+        if (self.registers[d.rs1] & XMASK) >= (self.registers[d.rs2] & XMASK):
+            self.pc = (self.pc + d.imm) & XMASK
+            self.pc_modified = True
+
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
         mnemonic_lookup = {
@@ -456,6 +520,14 @@ class CPU:
             (0x17, None, None): self._auipc,
             (0x6f, None, None): self._jal,
             (0x67, 0x00, None): self._jarl,
+
+            # branching
+            (0x63, 0x00, None): self._beq,
+            (0x63, 0x01, None): self._bne,
+            (0x63, 0x04, None): self._blt,
+            (0x63, 0x05, None): self._bge,
+            (0x63, 0x06, None): self._bltu,
+            (0x63, 0x07, None): self._bgeu,
 
             # control status registers instructions
             (0x73, 0x01, None): self._csrrw,
