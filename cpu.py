@@ -48,6 +48,10 @@ def disasm(d: "DecodedInstr") -> str:
 
     if key == (0x13, 0x00, None):  # addi
         return f"addi x{d.rd}, x{d.rs1}, {d.imm}"
+    elif key == (0x13, 0x02, None):  # slti
+        return f"slti x{d.rd}, x{d.rs1}, {d.imm}"
+    elif key == (0x13, 0x03, None):  # sltiu
+        return f"sltiu x{d.rd}, x{d.rs1}, {d.imm}"
     elif key == (0x33, 0x00, 0x00):  # add
         return f"add x{d.rd}, x{d.rs1}, x{d.rs2}"
     elif key == (0x03, 0x00, None):  # lb
@@ -195,6 +199,7 @@ class CPU:
             0b0000011: "I",
             0b1110011: "I",
             0b1100111: "I",
+            0b0010011: "I",
             0b0110011: "R",
             0b0100011: "S",
             0b0110111: "U",
@@ -500,6 +505,18 @@ class CPU:
             self.pc = (self.pc + d.imm) & XMASK
             self.pc_modified = True
 
+    # R[rd] = (R[rs1] < imm)?1:0
+    def _slti(self, d: DecodedInstr) -> None:
+        value = 1 if sign_extend(self.registers[d.rs1], 64) < d.imm else 0
+        if d.rd != 0:
+            self.registers[d.rd] = value
+
+    # R[rd] = (R[rs1] < imm)?1:0 (unsigned)
+    def _sltiu(self, d: DecodedInstr) -> None:
+        value = 1 if (self.registers[d.rs1] & XMASK) < (d.imm & XMASK) else 0
+        if d.rd != 0:
+            self.registers[d.rd] = value
+
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
         mnemonic_lookup = {
@@ -520,6 +537,8 @@ class CPU:
             (0x17, None, None): self._auipc,
             (0x6f, None, None): self._jal,
             (0x67, 0x00, None): self._jarl,
+            (0x13, 0x02, None): self._slti,
+            (0x13, 0x03, None): self._sltiu,
 
             # branching
             (0x63, 0x00, None): self._beq,

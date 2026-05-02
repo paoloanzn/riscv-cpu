@@ -46,6 +46,8 @@ Implemented Instructions
 - bge
 - bltu
 - bgeu
+- slti
+- sltiu
 
 Tests
 ---
