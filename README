@@ -57,6 +57,12 @@ Implemented Instructions
 - srai
 - sll
 - slt
+- sltu
+- xor
+- srl
+- sra
+- or
+- and
 
 Tests
 ---

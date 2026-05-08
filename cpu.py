@@ -72,6 +72,18 @@ def disasm(d: "DecodedInstr") -> str:
         return f"sll x{d.rd}, x{d.rs1}, x{d.rs2}"
     elif key == (0x33, 0x02, 0x00):  # slt
         return f"slt x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x03, 0x00):  # sltu
+        return f"sltu x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x04, 0x00):  # xor
+        return f"xor x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x05, 0x00):  # srl
+        return f"srl x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x05, 0x20):  # sra
+        return f"sra x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x06, 0x00):  # or
+        return f"or x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x07, 0x00):  # and
+        return f"and x{d.rd}, x{d.rs1}, x{d.rs2}"
     elif key == (0x03, 0x00, None):  # lb
         return f"lb x{d.rd}, {d.imm}(x{d.rs1})"
     elif key == (0x03, 0x01, None):  # lh
@@ -589,6 +601,37 @@ class CPU:
         if d.rd != 0:
             self.registers[d.rd] = 1 if sign_extend(self.registers[d.rs1], 64) < sign_extend(self.registers[d.rs2], 64) else 0
 
+    # R[rd] = (R[rs1] < R[rs2])?1:0 (unsigned)
+    def _sltu(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = 1 if (self.registers[d.rs1] & XMASK) < (self.registers[d.rs2] & XMASK) else 0
+
+    # R[rd] = R[rs1]^R[rs2]
+    def _xor(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = self.registers[d.rs1] ^ self.registers[d.rs2]
+
+    # R[rd] = R[rs1] >> R[rs2] (logical, zero-fill)
+    def _srl(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = (self.registers[d.rs1] & XMASK) >> (self.registers[d.rs2] & 0x3F)
+
+    # R[rd] = R[rs1]>> R[rs2] (arithmetic)
+    def _sra(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            val = sign_extend(self.registers[d.rs1], 64)
+            self.registers[d.rd] = (val >> (self.registers[d.rs2] & 0x3F)) & XMASK
+
+    # R[rd] = R[rs1]| R[rs2]
+    def _or(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = self.registers[d.rs1] | self.registers[d.rs2]
+
+    # R[rd] = R[rs1] & R[rs2]
+    def _and(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = self.registers[d.rs1] & self.registers[d.rs2]
+
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
         mnemonic_lookup = {
@@ -620,6 +663,12 @@ class CPU:
             (0x33, 0x00, 0x20): self._sub,
             (0x33, 0x01, 0x00): self._sll,
             (0x33, 0x02, 0x00): self._slt,
+            (0x33, 0x03, 0x00): self._sltu,
+            (0x33, 0x04, 0x00): self._xor,
+            (0x33, 0x05, 0x00): self._srl,
+            (0x33, 0x05, 0x20): self._sra,
+            (0x33, 0x06, 0x00): self._or,
+            (0x33, 0x07, 0x00): self._and,
 
             # branching
             (0x63, 0x00, None): self._beq,
