@@ -55,6 +55,8 @@ Implemented Instructions
 - slli
 - srli
 - srai
+- sll
+- slt
 
 Tests
 ---
