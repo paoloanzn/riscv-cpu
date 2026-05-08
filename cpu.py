@@ -66,6 +66,8 @@ def disasm(d: "DecodedInstr") -> str:
         return f"srai x{d.rd}, x{d.rs1}, {d.imm & 0x3F}"
     elif key == (0x33, 0x00, 0x00):  # add
         return f"add x{d.rd}, x{d.rs1}, x{d.rs2}"
+    elif key == (0x33, 0x00, 0x20):  # sub
+        return f"sub x{d.rd}, x{d.rs1}, x{d.rs2}"
     elif key == (0x03, 0x00, None):  # lb
         return f"lb x{d.rd}, {d.imm}(x{d.rs1})"
     elif key == (0x03, 0x01, None):  # lh
@@ -568,6 +570,11 @@ class CPU:
             val = sign_extend(val, 64)
             self.registers[d.rd] = (val >> (d.imm & 0x3F)) & XMASK
 
+    # R[rd] = R[rs1]-R[rs2]
+    def _sub(self, d: DecodedInstr) -> None:
+        if d.rd != 0:
+            self.registers[d.rd] = (self.registers[d.rs1] - self.registers[d.rs2]) & XMASK
+
     def _execute(self, d: DecodedInstr) -> None:
         # key(opcode, funct3, funct7) 
         mnemonic_lookup = {
@@ -596,6 +603,7 @@ class CPU:
             (0x13, 0x01, 0x00): self._slli,
             (0x13, 0x05, 0x00): self._srli,
             (0x13, 0x05, 0x20): self._srai,
+            (0x33, 0x00, 0x20): self._sub,
 
             # branching
             (0x63, 0x00, None): self._beq,
